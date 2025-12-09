@@ -1,0 +1,4 @@
+BACKEND_URL = "http://13.51.157.38:8000"
+BACKEND_IP = "13.51.157.38"
+ADMIN_TOKEN = "supersecretadmintoken"
+MYSQL_PASSWORD = "root123"

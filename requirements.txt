@@ -3,3 +3,4 @@ requests
 pymysql
 sqlalchemy
 pandas
+mysql-connector-python

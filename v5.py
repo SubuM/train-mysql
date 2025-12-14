@@ -4,15 +4,12 @@ import mysql.connector
 import re
 
 # -------------------------------
-# Config from secrets.toml
+# Config
 # -------------------------------
 BACKEND_URL = st.secrets["BACKEND_URL"]
-BACKEND_IP = st.secrets["BACKEND_IP"]
-MYSQL_ROOT_PASSWORD = st.secrets["MYSQL_PASSWORD"]
-TABLE_PREVIEW_LIMIT = 20      # Number of rows to show by default
 
 # -------------------------------
-# Backend API helpers
+# Helper functions: Backend API
 # -------------------------------
 def register_user(username, password):
     try:
@@ -90,7 +87,7 @@ def admin_get_logs(token, username):
         return {"error": "Could not connect to backend"}
 
 # -------------------------------
-# MySQL helpers
+# Helper function: SQL console
 # -------------------------------
 def run_sql_query(host, port, sql):
     try:
@@ -98,81 +95,20 @@ def run_sql_query(host, port, sql):
             host=host,
             port=port,
             user="root",
-            password=MYSQL_ROOT_PASSWORD
+            password="rootpassword"
         )
         cursor = conn.cursor()
         cursor.execute(sql)
 
         if cursor.with_rows:
             rows = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
-            return {"type": "table", "columns": columns, "rows": rows}
+            cols = [desc[0] for desc in cursor.description]
+            return {"type": "table", "columns": cols, "rows": rows}
         else:
             conn.commit()
             return {"type": "message", "message": f"{cursor.rowcount} rows affected."}
     except Exception as e:
         return {"type": "error", "message": str(e)}
-
-def get_databases(host, port):
-    try:
-        conn = mysql.connector.connect(
-            host=host,
-            port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD
-        )
-        cursor = conn.cursor()
-        cursor.execute("SHOW DATABASES;")
-        return [row[0] for row in cursor.fetchall()]
-    except:
-        return []
-
-def get_tables(host, port, db):
-    try:
-        conn = mysql.connector.connect(
-            host=host,
-            port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD,
-            database=db
-        )
-        cursor = conn.cursor()
-        cursor.execute("SHOW TABLES;")
-        return [row[0] for row in cursor.fetchall()]
-    except:
-        return []
-
-def get_columns(host, port, db, table):
-    try:
-        conn = mysql.connector.connect(
-            host=host,
-            port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD,
-            database=db
-        )
-        cursor = conn.cursor()
-        cursor.execute(f"DESCRIBE {table};")
-        return [row[0] for row in cursor.fetchall()]
-    except:
-        return []
-
-def preview_table(host, port, db, table, limit=TABLE_PREVIEW_LIMIT):
-    try:
-        conn = mysql.connector.connect(
-            host=host,
-            port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD,
-            database=db
-        )
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT * FROM {table} LIMIT {limit};")
-        rows = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
-        return rows, columns
-    except Exception as e:
-        return None, str(e)
 
 # -------------------------------
 # Streamlit UI
@@ -181,7 +117,7 @@ st.set_page_config(page_title="SQL Lab", layout="wide")
 st.title("SQL Lab")
 
 # -------------------------------
-# Session state
+# Session state initialization
 # -------------------------------
 if "token" not in st.session_state:
     st.session_state["token"] = None
@@ -189,18 +125,16 @@ if "username" not in st.session_state:
     st.session_state["username"] = None
 if "container_info" not in st.session_state:
     st.session_state["container_info"] = None
-if "query_history" not in st.session_state:
-    st.session_state["query_history"] = []
 
 # -------------------------------
-# Login/Register
+# Login / Register Menu
 # -------------------------------
 if st.session_state["token"] is None:
     menu = ["Login", "Register"]
     choice = st.sidebar.selectbox("Menu", menu)
 
     if choice == "Register":
-        st.subheader("Register a new user")
+        st.subheader("Create a new user")
         new_user = st.text_input("Username", key="reg_user")
         new_password = st.text_input("Password", type="password", key="reg_pass")
         if st.button("Register"):
@@ -225,7 +159,7 @@ if st.session_state["token"] is None:
                 st.error("Invalid credentials")
 
 # -------------------------------
-# Dashboard
+# Logged-in dashboard
 # -------------------------------
 if st.session_state["token"]:
     token = st.session_state["token"]
@@ -236,22 +170,25 @@ if st.session_state["token"]:
         st.session_state["token"] = None
         st.session_state["username"] = None
         st.session_state["container_info"] = None
-        st.session_state["query_history"] = []
-        st.experimental_rerun()
+        st.info("Logged out successfully")
+        st.experimental_rerun()  # this still works for navigation; otherwise refresh page manually
 
     is_admin = username == "admin"
 
+    # -------------------------------
+    # User dashboard (non-admin)
+    # -------------------------------
     if not is_admin:
         st.subheader("User Dashboard")
         st.write(f"Hello {username}! Manage your MySQL container below:")
 
-        # Fetch container info if not set
+        # Fetch container info if not already fetched
         if st.session_state["container_info"] is None:
             st.session_state["container_info"] = get_user_container(token)
 
         container_info = st.session_state["container_info"]
 
-        # Get host port
+        # Determine host port
         host_port = None
         if "host_port" in container_info:
             host_port = container_info["host_port"]
@@ -263,66 +200,48 @@ if st.session_state["token"]:
         if host_port:
             st.success(f"MySQL container running on port: {host_port}")
 
-            # ---------------- SQL Console ----------------
+            # SQL Console
             st.subheader("SQL Console")
             sql_query = st.text_area("Enter SQL query", height=200)
             if st.button("Run SQL Query"):
-                result = run_sql_query(BACKEND_IP, host_port, sql_query)
-                st.session_state["query_history"].append(sql_query)
+                result = run_sql_query(
+                    host="51.20.117.249",  # Replace with your host if needed
+                    port=host_port,
+                    sql=sql_query
+                )
                 if result["type"] == "table":
                     st.dataframe(result["rows"], columns=result["columns"])
                 elif result["type"] == "message":
                     st.success(result["message"])
                 else:
                     st.error(result["message"])
-
-            # ---------------- Query History ----------------
-            if st.session_state["query_history"]:
-                st.subheader("Query History")
-                for i, q in enumerate(reversed(st.session_state["query_history"]), 1):
-                    st.code(f"{i}: {q}")
-
-            # ---------------- Database Schema Explorer ----------------
-            st.subheader("Database Schema Explorer")
-            dbs = get_databases(BACKEND_IP, host_port)
-            selected_db = st.selectbox("Select Database", dbs)
-            if selected_db:
-                tables = get_tables(BACKEND_IP, host_port, selected_db)
-                selected_table = st.selectbox("Select Table", tables)
-                if selected_table:
-                    columns = get_columns(BACKEND_IP, host_port, selected_db, selected_table)
-                    st.write(f"Columns in `{selected_table}`:")
-                    st.write(columns)
-
-                    # ---------------- Table Preview ----------------
-                    st.write(f"Preview of `{selected_table}` (first {TABLE_PREVIEW_LIMIT} rows):")
-                    rows, cols = preview_table(BACKEND_IP, host_port, selected_db, selected_table)
-                    if rows is not None:
-                        st.dataframe(rows, columns=cols)
-                    else:
-                        st.error(cols)
-
         else:
             st.info(container_info.get("message", str(container_info)))
             if st.button("Start MySQL Container"):
                 st.session_state["container_info"] = get_user_container(token)
 
+    # -------------------------------
+    # Admin dashboard
+    # -------------------------------
     else:
         st.subheader("Admin Dashboard")
         st.write(f"Hello {username}! Manage users and containers.")
 
         tabs = st.tabs(["List Users", "User Details", "Manage Containers", "View Logs"])
 
+        # ---------------- List Users ----------------
         with tabs[0]:
             st.write("List of all users:")
             users = admin_list_users(token).get("users", [])
             st.write(users)
 
+        # ---------------- User Details ----------------
         with tabs[1]:
             st.write("Detailed info for all users:")
             details = admin_list_users_detailed(token)
             st.json(details)
 
+        # ---------------- Manage Containers ----------------
         with tabs[2]:
             st.write("Manage user containers")
             target_user = st.selectbox("Select user", [u for u in users if u != "admin"])
@@ -332,6 +251,7 @@ if st.session_state["token"]:
                 result = admin_action(token, action, target_user)
                 st.write(result)
 
+        # ---------------- View Logs ----------------
         with tabs[3]:
             st.write("View container logs")
             log_user = st.selectbox("Select user for logs", [u for u in users if u != "admin"], key="loguser")

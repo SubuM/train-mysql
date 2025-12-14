@@ -6,8 +6,8 @@ import re
 # -------------------------------
 # Config from secrets.toml
 # -------------------------------
-BACKEND_URL = st.secrets["BACKEND_URL"]
-BACKEND_IP = st.secrets["BACKEND_IP"]
+BACKEND_URL = st.secrets["BACKEND_URL"]      # e.g., "https://your-duckdns-domain"
+BACKEND_IP = st.secrets["BACKEND_IP"]        # Could be the same as BACKEND_URL without https
 MYSQL_ROOT_PASSWORD = st.secrets["MYSQL_PASSWORD"]
 TABLE_PREVIEW_LIMIT = 20      # Number of rows to show by default
 
@@ -92,13 +92,14 @@ def admin_get_logs(token, username):
 # -------------------------------
 # MySQL helpers
 # -------------------------------
-def run_sql_query(host, port, sql):
+def run_sql_query(host, port, user, password, database, sql):
     try:
         conn = mysql.connector.connect(
             host=host,
             port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD
+            user=user,
+            password=password,
+            database=database
         )
         cursor = conn.cursor()
         cursor.execute(sql)
@@ -113,13 +114,13 @@ def run_sql_query(host, port, sql):
     except Exception as e:
         return {"type": "error", "message": str(e)}
 
-def get_databases(host, port):
+def get_databases(host, port, user, password):
     try:
         conn = mysql.connector.connect(
             host=host,
             port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD
+            user=user,
+            password=password
         )
         cursor = conn.cursor()
         cursor.execute("SHOW DATABASES;")
@@ -127,13 +128,13 @@ def get_databases(host, port):
     except:
         return []
 
-def get_tables(host, port, db):
+def get_tables(host, port, user, password, db):
     try:
         conn = mysql.connector.connect(
             host=host,
             port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD,
+            user=user,
+            password=password,
             database=db
         )
         cursor = conn.cursor()
@@ -142,13 +143,13 @@ def get_tables(host, port, db):
     except:
         return []
 
-def get_columns(host, port, db, table):
+def get_columns(host, port, user, password, db, table):
     try:
         conn = mysql.connector.connect(
             host=host,
             port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD,
+            user=user,
+            password=password,
             database=db
         )
         cursor = conn.cursor()
@@ -157,13 +158,13 @@ def get_columns(host, port, db, table):
     except:
         return []
 
-def preview_table(host, port, db, table, limit=TABLE_PREVIEW_LIMIT):
+def preview_table(host, port, user, password, db, table, limit=TABLE_PREVIEW_LIMIT):
     try:
         conn = mysql.connector.connect(
             host=host,
             port=port,
-            user="root",
-            password=MYSQL_ROOT_PASSWORD,
+            user=user,
+            password=password,
             database=db
         )
         cursor = conn.cursor()
@@ -251,14 +252,11 @@ if st.session_state["token"]:
 
         container_info = st.session_state["container_info"]
 
-        # Get host port
-        host_port = None
-        if "host_port" in container_info:
-            host_port = container_info["host_port"]
-        elif "message" in container_info:
-            m = re.search(r"port (\d+)", container_info["message"])
-            if m:
-                host_port = int(m.group(1))
+        host_port = container_info.get("port")
+        db_user = container_info.get("user")
+        db_password = container_info.get("password")
+        db_name = container_info.get("database")
+        host = container_info.get("host", BACKEND_IP)
 
         if host_port:
             st.success(f"MySQL container running on port: {host_port}")
@@ -267,7 +265,7 @@ if st.session_state["token"]:
             st.subheader("SQL Console")
             sql_query = st.text_area("Enter SQL query", height=200)
             if st.button("Run SQL Query"):
-                result = run_sql_query(BACKEND_IP, host_port, sql_query)
+                result = run_sql_query(host, host_port, db_user, db_password, db_name, sql_query)
                 st.session_state["query_history"].append(sql_query)
                 if result["type"] == "table":
                     st.dataframe(result["rows"], columns=result["columns"])
@@ -284,19 +282,19 @@ if st.session_state["token"]:
 
             # ---------------- Database Schema Explorer ----------------
             st.subheader("Database Schema Explorer")
-            dbs = get_databases(BACKEND_IP, host_port)
+            dbs = get_databases(host, host_port, db_user, db_password)
             selected_db = st.selectbox("Select Database", dbs)
             if selected_db:
-                tables = get_tables(BACKEND_IP, host_port, selected_db)
+                tables = get_tables(host, host_port, db_user, db_password, selected_db)
                 selected_table = st.selectbox("Select Table", tables)
                 if selected_table:
-                    columns = get_columns(BACKEND_IP, host_port, selected_db, selected_table)
+                    columns = get_columns(host, host_port, db_user, db_password, selected_db, selected_table)
                     st.write(f"Columns in `{selected_table}`:")
                     st.write(columns)
 
                     # ---------------- Table Preview ----------------
                     st.write(f"Preview of `{selected_table}` (first {TABLE_PREVIEW_LIMIT} rows):")
-                    rows, cols = preview_table(BACKEND_IP, host_port, selected_db, selected_table)
+                    rows, cols = preview_table(host, host_port, db_user, db_password, selected_db, selected_table)
                     if rows is not None:
                         st.dataframe(rows, columns=cols)
                     else:

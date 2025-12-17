@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import requests
 import mysql.connector
 import re
@@ -93,17 +92,15 @@ def admin_get_logs(token, username):
 # -------------------------------
 # MySQL helpers
 # -------------------------------
-def run_sql_query(host, port, sql, database=None):
+def run_sql_query(host, port, sql):
     try:
         conn = mysql.connector.connect(
             host=host,
             port=port,
             user="root",
-            password=MYSQL_ROOT_PASSWORD,
-            database=database if database else None
+            password=MYSQL_ROOT_PASSWORD
         )
         cursor = conn.cursor()
-
         cursor.execute(sql)
 
         if cursor.with_rows:
@@ -113,10 +110,8 @@ def run_sql_query(host, port, sql, database=None):
         else:
             conn.commit()
             return {"type": "message", "message": f"{cursor.rowcount} rows affected."}
-
     except Exception as e:
         return {"type": "error", "message": str(e)}
-
 
 def get_databases(host, port):
     try:
@@ -272,20 +267,10 @@ if st.session_state["token"]:
             st.subheader("SQL Console")
             sql_query = st.text_area("Enter SQL query", height=200)
             if st.button("Run SQL Query"):
-                # result = run_sql_query(BACKEND_IP, host_port, sql_query)
-                # result = run_sql_query(BACKEND_IP, host_port, sql_query, selected_db)
-                result = run_sql_query(
-                    BACKEND_IP,
-                    host_port,
-                    sql_query,
-                    st.session_state["selected_db"]
-                )
-
+                result = run_sql_query(BACKEND_IP, host_port, sql_query)
                 st.session_state["query_history"].append(sql_query)
                 if result["type"] == "table":
-                    # st.dataframe(result["rows"], columns=result["columns"])
-                    df = pd.DataFrame(result["rows"], columns=result["columns"])
-                    st.dataframe(df, use_container_width=True)
+                    st.dataframe(result["rows"], columns=result["columns"])
                 elif result["type"] == "message":
                     st.success(result["message"])
                 else:
@@ -297,22 +282,11 @@ if st.session_state["token"]:
                 for i, q in enumerate(reversed(st.session_state["query_history"]), 1):
                     st.code(f"{i}: {q}")
 
-            # ---------------- Database selector ----------------
-            if "selected_db" not in st.session_state:
-                st.session_state["selected_db"] = None
-
             # ---------------- Database Schema Explorer ----------------
             st.subheader("Database Schema Explorer")
             dbs = get_databases(BACKEND_IP, host_port)
-            # selected_db = st.selectbox("Select Database", dbs)
-            st.session_state["selected_db"] = st.selectbox(
-                "Select Database",
-                dbs,
-                index=0 if dbs else None
-            )
-
-            if st.session_state["selected_db"]:
-                selected_db = st.session_state["selected_db"]
+            selected_db = st.selectbox("Select Database", dbs)
+            if selected_db:
                 tables = get_tables(BACKEND_IP, host_port, selected_db)
                 selected_table = st.selectbox("Select Table", tables)
                 if selected_table:
@@ -324,9 +298,7 @@ if st.session_state["token"]:
                     st.write(f"Preview of `{selected_table}` (first {TABLE_PREVIEW_LIMIT} rows):")
                     rows, cols = preview_table(BACKEND_IP, host_port, selected_db, selected_table)
                     if rows is not None:
-                        # st.dataframe(rows, columns=cols)
-                        df = pd.DataFrame(rows, columns=cols)
-                        st.dataframe(df, use_container_width=True)
+                        st.dataframe(rows, columns=cols)
                     else:
                         st.error(cols)
 

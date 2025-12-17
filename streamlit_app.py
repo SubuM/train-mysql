@@ -180,8 +180,8 @@ def preview_table(host, port, db, table, limit=TABLE_PREVIEW_LIMIT):
 # -------------------------------
 # Streamlit UI
 # -------------------------------
-st.set_page_config(page_title="SQL Lab", layout="wide")
-st.title("SQL Lab")
+st.set_page_config(page_title="SQL Lab", page_icon="🔬", layout="wide")
+st.title("🧪 SQL Lab")
 
 # -------------------------------
 # Session state
@@ -283,11 +283,28 @@ if st.session_state["token"]:
             if "query_history" not in st.session_state:
                 st.session_state["query_history"] = []
 
+            # ------------------ ACE Editor Theme Selector ------------------
+            # List of popular Ace editor themes
+            ace_themes = [
+                "dracula",
+                "monokai",
+                "github",
+                "tomorrow",
+                "twilight",
+                "xcode",
+                "solarized_dark",
+                "solarized_light",
+                "terminal"
+            ]
+
+            # Dropdown to let user pick theme
+            selected_theme = st.selectbox("Select ACE Editor Theme", ace_themes, index=0)
+
             # ACE editor for SQL queries
             sql_query = st_ace(
                 value="",
                 language="sql",
-                theme="monokai",
+                theme=selected_theme,
                 height=300,
                 key="sql_editor",
                 font_size=14,

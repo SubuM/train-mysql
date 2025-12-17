@@ -104,6 +104,7 @@ def run_sql_query(host, port, sql, database=None):
             database=database if database else None
         )
         cursor = conn.cursor()
+
         cursor.execute(sql)
 
         if cursor.with_rows:
@@ -113,8 +114,10 @@ def run_sql_query(host, port, sql, database=None):
         else:
             conn.commit()
             return {"type": "message", "message": f"{cursor.rowcount} rows affected."}
+
     except Exception as e:
         return {"type": "error", "message": str(e)}
+
 
 def get_databases(host, port):
     try:
@@ -236,15 +239,20 @@ if st.session_state["token"]:
 
     st.sidebar.success(f"Logged in as {username}")
     if st.sidebar.button("Logout"):
-        # Clear session state fully
         for key in [
-            "token", "username", "container_info",
-            "query_history", "selected_db",
-            "login_user", "login_pass",
-            "reg_user", "reg_pass",
+            "token",
+            "username",
+            "container_info",
+            "query_history",
+            "selected_db",
+            "login_user",
+            "login_pass",
+            "reg_user",
+            "reg_pass",
         ]:
             if key in st.session_state:
                 del st.session_state[key]
+
         st.rerun()
 
     is_admin = username == "admin"
@@ -256,6 +264,7 @@ if st.session_state["token"]:
         # Fetch container info if not set
         if st.session_state["container_info"] is None:
             st.session_state["container_info"] = get_user_container(token)
+
         container_info = st.session_state["container_info"]
 
         # Get host port
@@ -273,21 +282,11 @@ if st.session_state["token"]:
             # ---------------- SQL Console ----------------
             st.subheader("SQL Console")
 
-            # Ensure user database exists and is used
-            user_db = username
-            create_db_query = f"CREATE DATABASE IF NOT EXISTS `{user_db}`;"
-            run_sql_query(BACKEND_IP, host_port, create_db_query)
-            st.session_state["selected_db"] = user_db
-
-            # Initialize query history if not exists
-            if "query_history" not in st.session_state:
-                st.session_state["query_history"] = []
-
             # ACE editor for SQL queries
             sql_query = st_ace(
                 value="",
                 language="sql",
-                theme="monokai",
+                theme="monokai",       # you can choose other themes like "github", "tomorrow_night", etc.
                 height=300,
                 key="sql_editor",
                 font_size=14,
@@ -295,19 +294,12 @@ if st.session_state["token"]:
                 show_gutter=True,
                 show_print_margin=False,
                 wrap=True,
-                placeholder="Write your SQL query here...",
             )
 
-            # Protected databases
-            protected_dbs = ["mysql", "information_schema", "performance_schema", "sys", username]
-
-            # Execute query only if new
-            if sql_query.strip() and sql_query != st.session_state.get("last_executed_sql"):
-
-                # Protect DROP DATABASE
-                drop_db_match = re.match(r"^\s*DROP\s+DATABASE\s+`?(\w+)`?\s*;?\s*$", sql_query, re.IGNORECASE)
-                if drop_db_match and drop_db_match.group(1) in protected_dbs:
-                    st.error(f"Cannot drop protected database: `{drop_db_match.group(1)}`")
+            # Run query button
+            if st.button("Run SQL Query"):
+                if not sql_query.strip():
+                    st.warning("Please enter a SQL query.")
                 else:
                     result = run_sql_query(
                         BACKEND_IP,
@@ -318,10 +310,10 @@ if st.session_state["token"]:
 
                     # Append to query history
                     st.session_state["query_history"].append(sql_query)
-                    st.session_state["last_executed_sql"] = sql_query
 
                     # Display results
                     if result["type"] == "table":
+                        import pandas as pd
                         df = pd.DataFrame(result["rows"], columns=result["columns"])
                         st.dataframe(df, use_container_width=True)
                     elif result["type"] == "message":
@@ -335,11 +327,14 @@ if st.session_state["token"]:
                 for i, q in enumerate(reversed(st.session_state["query_history"]), 1):
                     st.code(f"{i}: {q}", language="sql")
 
-
+            # ---------------- Database selector ----------------
+            if "selected_db" not in st.session_state:
+                st.session_state["selected_db"] = None
 
             # ---------------- Database Schema Explorer ----------------
             st.subheader("Database Schema Explorer")
             dbs = get_databases(BACKEND_IP, host_port)
+            # selected_db = st.selectbox("Select Database", dbs)
             st.session_state["selected_db"] = st.selectbox(
                 "Select Database",
                 dbs,
@@ -354,10 +349,12 @@ if st.session_state["token"]:
                     columns = get_columns(BACKEND_IP, host_port, selected_db, selected_table)
                     st.write(f"Columns in `{selected_table}`:")
                     st.write(columns)
-                    # Table preview
+
+                    # ---------------- Table Preview ----------------
                     st.write(f"Preview of `{selected_table}` (first {TABLE_PREVIEW_LIMIT} rows):")
                     rows, cols = preview_table(BACKEND_IP, host_port, selected_db, selected_table)
                     if rows is not None:
+                        # st.dataframe(rows, columns=cols)
                         df = pd.DataFrame(rows, columns=cols)
                         st.dataframe(df, use_container_width=True)
                     else:
@@ -369,18 +366,21 @@ if st.session_state["token"]:
                 st.session_state["container_info"] = get_user_container(token)
 
     else:
-        # ---------------- Admin Dashboard ----------------
         st.subheader("Admin Dashboard")
         st.write(f"Hello {username}! Manage users and containers.")
+
         tabs = st.tabs(["List Users", "User Details", "Manage Containers", "View Logs"])
+
         with tabs[0]:
             st.write("List of all users:")
             users = admin_list_users(token).get("users", [])
             st.write(users)
+
         with tabs[1]:
             st.write("Detailed info for all users:")
             details = admin_list_users_detailed(token)
             st.json(details)
+
         with tabs[2]:
             st.write("Manage user containers")
             target_user = st.selectbox("Select user", [u for u in users if u != "admin"])
@@ -389,6 +389,7 @@ if st.session_state["token"]:
             if st.button("Execute"):
                 result = admin_action(token, action, target_user)
                 st.write(result)
+
         with tabs[3]:
             st.write("View container logs")
             log_user = st.selectbox("Select user for logs", [u for u in users if u != "admin"], key="loguser")

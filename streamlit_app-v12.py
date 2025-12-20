@@ -11,7 +11,7 @@ import re
 BACKEND_URL = st.secrets["BACKEND_URL"]
 BACKEND_IP = st.secrets["BACKEND_IP"]
 MYSQL_ROOT_PASSWORD = st.secrets["MYSQL_PASSWORD"]
-TABLE_PREVIEW_LIMIT = 20
+TABLE_PREVIEW_LIMIT = 20      # Number of rows to show by default
 
 # -------------------------------
 # Backend API helpers
@@ -34,7 +34,8 @@ def login_user(username, password):
         )
         if resp.status_code == 200:
             return resp.json()["token"]
-        return None
+        else:
+            return None
     except:
         return None
 
@@ -50,39 +51,43 @@ def get_user_container(token):
 
 def admin_list_users(token):
     try:
-        return requests.get(
+        resp = requests.get(
             f"{BACKEND_URL}/admin/list_user/",
             headers={"x-token": token}
-        ).json()
+        )
+        return resp.json()
     except:
         return {"error": "Could not connect to backend"}
 
 def admin_list_users_detailed(token):
     try:
-        return requests.get(
+        resp = requests.get(
             f"{BACKEND_URL}/admin/list_users_detailed/",
             headers={"x-token": token}
-        ).json()
+        )
+        return resp.json()
     except:
         return {"error": "Could not connect to backend"}
 
 def admin_action(token, action, username):
     try:
-        return requests.post(
+        resp = requests.post(
             f"{BACKEND_URL}/admin/{action}/",
             headers={"x-token": token},
             json={"username": username}
-        ).json()
+        )
+        return resp.json()
     except:
         return {"error": "Could not connect to backend"}
 
 def admin_get_logs(token, username):
     try:
-        return requests.get(
+        resp = requests.get(
             f"{BACKEND_URL}/admin/container_logs/",
             headers={"x-token": token},
             params={"username": username}
-        ).json()
+        )
+        return resp.json()
     except:
         return {"error": "Could not connect to backend"}
 
@@ -103,7 +108,7 @@ def run_sql_query(host, port, sql, database=None):
 
         if cursor.with_rows:
             rows = cursor.fetchall()
-            columns = [d[0] for d in cursor.description]
+            columns = [desc[0] for desc in cursor.description]
             return {"type": "table", "columns": columns, "rows": rows}
         else:
             conn.commit()
@@ -114,48 +119,60 @@ def run_sql_query(host, port, sql, database=None):
 def get_databases(host, port):
     try:
         conn = mysql.connector.connect(
-            host=host, port=port, user="root", password=MYSQL_ROOT_PASSWORD
+            host=host,
+            port=port,
+            user="root",
+            password=MYSQL_ROOT_PASSWORD
         )
         cursor = conn.cursor()
         cursor.execute("SHOW DATABASES;")
-        return [r[0] for r in cursor.fetchall()]
+        return [row[0] for row in cursor.fetchall()]
     except:
         return []
 
 def get_tables(host, port, db):
     try:
         conn = mysql.connector.connect(
-            host=host, port=port, user="root",
-            password=MYSQL_ROOT_PASSWORD, database=db
+            host=host,
+            port=port,
+            user="root",
+            password=MYSQL_ROOT_PASSWORD,
+            database=db
         )
         cursor = conn.cursor()
         cursor.execute("SHOW TABLES;")
-        return [r[0] for r in cursor.fetchall()]
+        return [row[0] for row in cursor.fetchall()]
     except:
         return []
 
 def get_columns(host, port, db, table):
     try:
         conn = mysql.connector.connect(
-            host=host, port=port, user="root",
-            password=MYSQL_ROOT_PASSWORD, database=db
+            host=host,
+            port=port,
+            user="root",
+            password=MYSQL_ROOT_PASSWORD,
+            database=db
         )
         cursor = conn.cursor()
         cursor.execute(f"DESCRIBE {table};")
-        return [r[0] for r in cursor.fetchall()]
+        return [row[0] for row in cursor.fetchall()]
     except:
         return []
 
 def preview_table(host, port, db, table, limit=TABLE_PREVIEW_LIMIT):
     try:
         conn = mysql.connector.connect(
-            host=host, port=port, user="root",
-            password=MYSQL_ROOT_PASSWORD, database=db
+            host=host,
+            port=port,
+            user="root",
+            password=MYSQL_ROOT_PASSWORD,
+            database=db
         )
         cursor = conn.cursor()
         cursor.execute(f"SELECT * FROM {table} LIMIT {limit};")
         rows = cursor.fetchall()
-        columns = [d[0] for d in cursor.description]
+        columns = [desc[0] for desc in cursor.description]
         return rows, columns
     except Exception as e:
         return None, str(e)
@@ -167,74 +184,55 @@ st.set_page_config(page_title="SQL Lab", page_icon="🔬", layout="wide")
 st.title("🧪 SQL Lab")
 
 # -------------------------------
-# Session State
+# Session state
 # -------------------------------
-for k, v in {
-    "token": None,
-    "username": None,
-    "container_info": None,
-    "query_history": [],
-    "auth_mode": None
-}.items():
-    st.session_state.setdefault(k, v)
+if "token" not in st.session_state:
+    st.session_state["token"] = None
+if "username" not in st.session_state:
+    st.session_state["username"] = None
+if "container_info" not in st.session_state:
+    st.session_state["container_info"] = None
+if "query_history" not in st.session_state:
+    st.session_state["query_history"] = []
 
 # -------------------------------
-# Sidebar Auth (NEW UX)
+# Login/Register
 # -------------------------------
 if st.session_state["token"] is None:
-    st.sidebar.subheader("Authentication")
+    menu = ["Login", "Register"]
+    choice = st.sidebar.selectbox("Menu", menu)
 
-    if st.sidebar.button("👤 User Login"):
-        st.session_state["auth_mode"] = "user_login"
+    if choice == "Register":
+        st.subheader("Register a new user")
+        new_user = st.text_input("Username", key="reg_user")
+        new_password = st.text_input("Password", type="password", key="reg_pass")
+        if st.button("Register"):
+            result = register_user(new_user, new_password)
+            if "error" in result:
+                st.error(result["error"])
+            else:
+                st.success(result.get("message", "User registered"))
+                st.info("You can now login from the sidebar.")
 
-    if st.sidebar.button("🆕 New User Registration"):
-        st.session_state["auth_mode"] = "register"
-
-    if st.sidebar.button("🛡️ Admin Login"):
-        st.session_state["auth_mode"] = "admin_login"
-
-    mode = st.session_state["auth_mode"]
-
-    if mode == "user_login":
-        st.subheader("User Login")
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
+    elif choice == "Login":
+        st.subheader("Login")
+        username = st.text_input("Username", key="login_user")
+        password = st.text_input("Password", type="password", key="login_pass")
         if st.button("Login"):
-            token = login_user(u, p)
+            token = login_user(username, password)
             if token:
-                st.session_state.update({"token": token, "username": u})
-                st.rerun()
+                st.session_state["token"] = token
+                st.session_state["username"] = username
+                st.success(f"Logged in as {username}")
             else:
                 st.error("Invalid credentials")
 
-    elif mode == "register":
-        st.subheader("Register New User")
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        if st.button("Register"):
-            res = register_user(u, p)
-            if "error" in res:
-                st.error(res["error"])
-            else:
-                st.success("User registered successfully")
-
-    elif mode == "admin_login":
-        st.subheader("Admin Login")
-        admin_token = st.text_input("Admin Token", type="password")
-        if st.button("Login as Admin"):
-            token = login_user("admin", admin_token)
-            if token:
-                st.session_state.update({"token": token, "username": "admin"})
-                st.rerun()
-            else:
-                st.error("Invalid admin token")
-
 # -------------------------------
-# Dashboard (unchanged)
+# Dashboard
 # -------------------------------
 if st.session_state["token"]:
-    username = st.session_state["username"]
     token = st.session_state["token"]
+    username = st.session_state["username"]
 
     st.sidebar.success(f"Logged in as {username}")
     if st.sidebar.button("Logout"):
@@ -289,14 +287,14 @@ if st.session_state["token"]:
             # List of popular Ace editor themes
             ace_themes = [
                 "dracula",
-                "twilight",
                 "monokai",
-                "solarized_dark",
-                "terminal",
                 "github",
                 "tomorrow",
+                "twilight",
                 "xcode",
-                "solarized_light"
+                "solarized_dark",
+                "solarized_light",
+                "terminal"
             ]
 
             # Dropdown to let user pick theme

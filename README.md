@@ -31,8 +31,11 @@ The application is deployed on Streamlit Cloud and accessed via a web URL. No lo
 1. Access the SQL Lab application via the provided URL
 2. Register a new account or log in
 3. Start a personal MySQL container
-4. Write and execute SQL queries in the browser
-5. Explore schemas and preview tables
+4. After successful start of MySQL container, logout and login with the new user account
+5. If needed, choose the SQL editor theme from the dropdown
+6. Write and execute SQL queries in the browser
+7. Explore schemas and preview tables
+8. All query history are listed
 
 ### Admin Workflow
 1. Log in using admin credentials
